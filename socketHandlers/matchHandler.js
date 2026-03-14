@@ -300,7 +300,7 @@ async function finishMatch(io, roomId) {
   } else if (match.difficulty === 'medium') {
     winnerPoints = 2; loserPoints = -1;
   } else {
-    winnerPoints = 3; loserPoints = -1;
+    winnerPoints = 20; loserPoints = -1;
   }
 
   const p1Points = winnerId === p1.id ? winnerPoints : (winnerId === null ? 0 : loserPoints);
