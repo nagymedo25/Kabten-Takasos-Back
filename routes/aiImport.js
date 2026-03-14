@@ -89,11 +89,21 @@ ${text}`;
       return res.status(500).json({ message: 'فشل في تحليل استجابة الذكاء الاصطناعي', raw: responseText });
     }
 
-    // Add department to each question
-    const questions = (parsed.questions || []).map(q => ({
-      ...q,
-      department
-    }));
+    // Add department to each question and filter out broken ones
+    const questions = (parsed.questions || [])
+      .map(q => ({ ...q, department }))
+      .filter(q => {
+        if (!q.questionText || !String(q.questionText).trim()) return false;
+        if (q.questionType === 'matching') {
+          return Array.isArray(q.matchingPairs) && q.matchingPairs.length >= 2;
+        }
+        if (!q.correctAnswer || !String(q.correctAnswer).trim()) return false;
+        if (q.questionType === 'multiple_choice') {
+          if (!Array.isArray(q.options) || q.options.length < 2) return false;
+          if (!q.options.includes(q.correctAnswer)) return false;
+        }
+        return true;
+      });
 
     res.json({ questions, count: questions.length });
   } catch (error) {
