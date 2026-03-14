@@ -10,19 +10,21 @@ router.get('/:department', protect, async (req, res) => {
 
     const result = await pool.query(
       `SELECT 
-        er."userId",
+        u.id as "userId",
         u."fullName",
         u."username",
         u."department",
         u."profileImage",
         COALESCE(SUM(FLOOR(er.percentage / 10) + CASE WHEN er.percentage = 100 THEN 3 ELSE 0 END), 0)::int 
-        + COALESCE((SELECT points FROM match_points mp WHERE mp."userId" = er."userId"), 0) as "totalPoints",
+        + COALESCE(mp.points, 0)::int as "totalPoints",
+        COALESCE(mp.points, 0)::int as "matchPoints",
         COUNT(er.id)::int as "totalExams",
         MAX(er."createdAt") as "lastExam"
-       FROM exam_results er
-       JOIN users u ON er."userId" = u.id
-       WHERE er.department = $1
-       GROUP BY er."userId", u."fullName", u."username", u."department", u."profileImage"
+       FROM users u
+       LEFT JOIN exam_results er ON u.id = er."userId"
+       LEFT JOIN match_points mp ON mp."userId" = u.id
+       WHERE u.department = $1 AND COALESCE(u.role, 'user') != 'admin'
+       GROUP BY u.id, u."fullName", u."username", u."department", u."profileImage", mp.points
        ORDER BY "totalPoints" DESC
        LIMIT 50`,
       [department]

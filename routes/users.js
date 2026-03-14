@@ -3,6 +3,7 @@ const { pool } = require('../config/db');
 const { protect, adminOnly } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const { uploadProfileImage } = require('../config/cloudinary');
+const { seedMatchPoints } = require('../socketHandlers/matchHandler');
 const router = express.Router();
 
 // @route   GET /api/users - Get all users (admin)
@@ -53,6 +54,10 @@ router.put('/onboard', protect, async (req, res) => {
     );
 
     const user = result.rows[0];
+
+    // Ensure match_points row exists so user always appears in leaderboard
+    await seedMatchPoints(user.id);
+
     res.json({ ...user, _id: user.id });
   } catch (error) {
     res.status(500).json({ message: error.message });

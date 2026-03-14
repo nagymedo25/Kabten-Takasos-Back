@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../config/db');
 const { uploadProfileImage } = require('../config/cloudinary');
+const { seedMatchPoints } = require('../socketHandlers/matchHandler');
 const router = express.Router();
 
 const generateToken = (id) => {
@@ -44,6 +45,9 @@ router.post('/register', (req, res) => {
       );
 
       const user = insertResult.rows[0];
+
+      // Seed a 0-point match_points row so user appears in leaderboard immediately
+      await seedMatchPoints(user.id);
 
       res.status(201).json({
         _id: user.id,

@@ -116,4 +116,47 @@ router.get('/admin-stats', protect, adminOnly, async (req, res) => {
   }
 });
 
+// @route   POST /api/match/admin/backfill-points - Backfill match_points for all users + recalculate from matches table
+router.post('/admin/backfill-points', protect, adminOnly, async (req, res) => {
+  try {
+    // Step 1: Seed 0-point rows for all users who are missing from match_points
+    const seedResult = await pool.query(
+      `INSERT INTO match_points ("userId", points)
+       SELECT u.id, 0
+       FROM users u
+       WHERE u.role = 'student'
+         AND NOT EXISTS (SELECT 1 FROM match_points mp WHERE mp."userId" = u.id)`
+    );
+
+    // Step 2: Recalculate actual match points from the matches table for all users
+    // This rebuilds points from historical match data
+    const recalcResult = await pool.query(
+      `UPDATE match_points mp
+       SET points = sub.total_points
+       FROM (
+         SELECT u.id as uid,
+           COALESCE(SUM(
+             CASE WHEN m."player1Id" = u.id THEN m."player1Points"
+                  WHEN m."player2Id" = u.id THEN m."player2Points"
+                  ELSE 0 END
+           ), 0)::int as total_points
+         FROM users u
+         LEFT JOIN matches m ON m."player1Id" = u.id OR m."player2Id" = u.id
+         WHERE u.role = 'student'
+         GROUP BY u.id
+       ) sub
+       WHERE mp."userId" = sub.uid`
+    );
+
+    res.json({
+      message: 'تم بنجاح',
+      seeded: seedResult.rowCount,
+      recalculated: recalcResult.rowCount,
+    });
+  } catch (error) {
+    console.error('Backfill error:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 module.exports = router;

@@ -314,17 +314,9 @@ async function finishMatch(io, roomId) {
       [p1.id, p2.id, match.difficulty, match.questionCount, p1.correct, p2.correct, p1.finishTime || 0, p2.finishTime || 0, winnerId, p1Points, p2Points, match.department]
     );
 
-    // Update match_points for both players
-    await pool.query(
-      `INSERT INTO match_points ("userId", points) VALUES ($1, $2)
-       ON CONFLICT ("userId") DO UPDATE SET points = match_points.points + $2`,
-      [p1.id, p1Points]
-    );
-    await pool.query(
-      `INSERT INTO match_points ("userId", points) VALUES ($1, $2)
-       ON CONFLICT ("userId") DO UPDATE SET points = match_points.points + $2`,
-      [p2.id, p2Points]
-    );
+    // Update match_points for both players (safe upsert)
+    await safeUpsertPoints(p1.id, p1Points);
+    await safeUpsertPoints(p2.id, p2Points);
 
   } catch (error) {
     console.error('Error saving match results:', error);
@@ -365,9 +357,48 @@ function broadcastOnlineUsers(io) {
   io.emit('match:onlineUsers', onlineList);
 }
 
+// Safe upsert for match_points - works even without a UNIQUE constraint
+async function safeUpsertPoints(userId, pointsDelta) {
+  try {
+    // Try to update existing row
+    const updateResult = await pool.query(
+      `UPDATE match_points SET points = points + $1 WHERE "userId" = $2`,
+      [pointsDelta, userId]
+    );
+    // If no row was updated, insert a new one
+    if (updateResult.rowCount === 0) {
+      await pool.query(
+        `INSERT INTO match_points ("userId", points) VALUES ($1, $2)`,
+        [userId, pointsDelta]
+      );
+    }
+  } catch (err) {
+    console.error('safeUpsertPoints error:', err);
+  }
+}
+
+// Insert a 0-point seed row for a new user (called from auth routes)
+async function seedMatchPoints(userId) {
+  try {
+    // Only insert if no row exists yet
+    const existing = await pool.query(
+      `SELECT 1 FROM match_points WHERE "userId" = $1`,
+      [userId]
+    );
+    if (existing.rowCount === 0) {
+      await pool.query(
+        `INSERT INTO match_points ("userId", points) VALUES ($1, 0)`,
+        [userId]
+      );
+    }
+  } catch (err) {
+    console.error('seedMatchPoints error:', err);
+  }
+}
+
 // Export for REST API access
 function getOnlineUsers() {
   return Array.from(onlineUsers.keys());
 }
 
-module.exports = { matchHandler, getOnlineUsers };
+module.exports = { matchHandler, getOnlineUsers, seedMatchPoints };
